@@ -5,21 +5,32 @@
 ```bash
 bun install          # install dependencies
 bun test             # run free tests (browse + snapshot + skill validation)
+bun run test:free    # sharded free tests (Windows-compatible runner)
+bun run test:windows # Windows-only shard of free tests
 bun run test:evals   # run paid evals: LLM judge + E2E (diff-based, ~$4/run max)
 bun run test:evals:all  # run ALL paid evals regardless of diff
 bun run test:gate    # run gate-tier tests only (CI default, blocks merge)
 bun run test:periodic  # run periodic-tier tests only (weekly cron / manual)
 bun run test:e2e     # run E2E tests only (diff-based, ~$3.85/run max)
 bun run test:e2e:all # run ALL E2E tests regardless of diff
+bun run test:codex   # run Codex E2E tests only (diff-based)
+bun run test:codex:all # run ALL Codex E2E tests regardless of diff
+bun run test:gemini  # run Gemini E2E tests only (diff-based)
+bun run test:gemini:all # run ALL Gemini E2E tests regardless of diff
+bun run test:audit   # run audit-compliance tests
 bun run eval:select  # show which tests would run based on current diff
-bun run dev <cmd>    # run CLI in dev mode, e.g. bun run dev goto https://example.com
-bun run build        # gen docs + compile binaries
+bun run eval:watch   # live-stream eval results as they arrive
+bun run dev <cmd>    # run browse CLI in dev mode, e.g. bun run dev goto https://example.com
+bun run dev:make-pdf # run make-pdf CLI in dev mode
+bun run dev:design   # run design CLI in dev mode
+bun run build        # gen docs + compile all binaries (browse, design, make-pdf)
 bun run gen:skill-docs  # regenerate SKILL.md files from templates
 bun run skill:check  # health dashboard for all skills
 bun run dev:skill    # watch mode: auto-regen + validate on change
 bun run eval:list    # list all eval runs from ~/.gstack-dev/evals/
 bun run eval:compare # compare two eval runs (auto-picks most recent)
 bun run eval:summary # aggregate stats across all eval runs
+bun run analytics    # show analytics dashboard
 bun run slop          # full slop-scan report (all files)
 bun run slop:diff     # slop findings in files changed on this branch only
 ```
@@ -81,10 +92,22 @@ tests via `claude -p`. Both must pass before creating a PR.
 gstack/
 ├── browse/          # Headless browser CLI (Playwright)
 │   ├── src/         # CLI + server + commands
-│   │   ├── commands.ts  # Command registry (single source of truth)
-│   │   └── snapshot.ts  # SNAPSHOT_FLAGS metadata array
+│   │   ├── commands.ts      # Command registry (single source of truth)
+│   │   ├── snapshot.ts      # SNAPSHOT_FLAGS metadata array
+│   │   ├── server.ts        # Bun.serve daemon (embeddable as library)
+│   │   ├── security.ts      # Canary + verdict combiner (safe for compiled binary)
+│   │   ├── security-classifier.ts  # ML classifiers (sidebar-agent only)
+│   │   └── terminal-agent.ts  # Claude PTY host in sidebar
 │   ├── test/        # Integration tests + fixtures
+│   └── dist/        # Compiled binary (gitignored for new installs)
+├── design/          # Design binary CLI (GPT Image API)
+│   ├── src/         # CLI + commands (generate, variants, compare, serve, etc.)
+│   ├── test/        # Integration tests
 │   └── dist/        # Compiled binary
+├── make-pdf/        # PDF generation binary (Playwright-based)
+│   ├── src/         # CLI + renderer + orchestrator
+│   ├── test/        # Integration tests
+│   └── dist/        # Compiled binary (make-pdf/dist/pdf)
 ├── hosts/           # Typed host configs (one per AI agent)
 │   ├── claude.ts    # Primary host config
 │   ├── codex.ts, factory.ts, kiro.ts  # Existing hosts
@@ -96,56 +119,124 @@ gstack/
 │   ├── host-config.ts     # HostConfig interface + validator
 │   ├── host-config-export.ts  # Shell bridge for setup script
 │   ├── host-adapters/     # Host-specific adapters (OpenClaw tool mapping)
-│   ├── resolvers/   # Template resolver modules (preamble, design, review, gbrain, etc.)
+│   ├── resolvers/         # Template resolver modules
+│   │   ├── preamble/      # Per-section preamble generators (one file each)
+│   │   ├── preamble.ts    # Composition root (wires preamble generators by tier)
+│   │   ├── review.ts, design.ts, gbrain.ts, learnings.ts, etc.
+│   │   └── types.ts       # TemplateContext interface
 │   ├── skill-check.ts     # Health dashboard
 │   └── dev-skill.ts       # Watch mode
 ├── test/            # Skill validation + eval tests
-│   ├── helpers/     # skill-parser.ts, session-runner.ts, llm-judge.ts, eval-store.ts
+│   ├── helpers/     # Test infrastructure
+│   │   ├── session-runner.ts      # claude -p runner (stream-json)
+│   │   ├── agent-sdk-runner.ts    # Claude Agent SDK runner
+│   │   ├── codex-session-runner.ts  # Codex CLI runner
+│   │   ├── gemini-session-runner.ts # Gemini CLI runner
+│   │   ├── llm-judge.ts           # LLM-as-judge harness
+│   │   ├── eval-store.ts          # Eval result persistence (~/.gstack-dev/evals/)
+│   │   ├── benchmark-judge.ts     # Benchmark comparison judge
+│   │   ├── skill-parser.ts        # SKILL.md section parser
+│   │   ├── touchfiles.ts          # Diff-based test selection (E2E_TIERS)
+│   │   ├── e2e-helpers.ts         # Shared E2E test utilities
+│   │   ├── secret-sink-harness.ts # Secret-leak test helpers
+│   │   ├── tool-map.ts            # Tool call mapping helpers
+│   │   └── providers/             # Provider-specific helpers
 │   ├── fixtures/    # Ground truth JSON, planted-bug fixtures, eval baselines
 │   ├── skill-validation.test.ts  # Tier 1: static validation (free, <1s)
 │   ├── gen-skill-docs.test.ts    # Tier 1: generator quality (free, <1s)
-│   ├── skill-llm-eval.test.ts   # Tier 3: LLM-as-judge (~$0.15/run)
-│   └── skill-e2e-*.test.ts       # Tier 2: E2E via claude -p (~$3.85/run, split by category)
-├── qa-only/         # /qa-only skill (report-only QA, no fixes)
-├── plan-design-review/  # /plan-design-review skill (report-only design audit)
-├── design-review/    # /design-review skill (design audit + fix loop)
-├── ship/            # Ship workflow skill
-├── review/          # PR review skill
-├── plan-ceo-review/ # /plan-ceo-review skill
-├── plan-eng-review/ # /plan-eng-review skill
-├── autoplan/        # /autoplan skill (auto-review pipeline: CEO → design → eng)
-├── benchmark/       # /benchmark skill (performance regression detection)
-├── canary/          # /canary skill (post-deploy monitoring loop)
-├── codex/           # /codex skill (multi-AI second opinion via OpenAI Codex CLI)
-├── land-and-deploy/ # /land-and-deploy skill (merge → deploy → canary verify)
-├── office-hours/    # /office-hours skill (YC Office Hours — startup diagnostic + builder brainstorm)
-├── investigate/     # /investigate skill (systematic root-cause debugging)
-├── retro/           # Retrospective skill (includes /retro global cross-project mode)
-├── bin/             # CLI utilities (gstack-repo-mode, gstack-slug, gstack-config, etc.)
-├── document-release/ # /document-release skill (post-ship doc updates)
-├── cso/             # /cso skill (OWASP Top 10 + STRIDE security audit)
-├── design-consultation/ # /design-consultation skill (design system from scratch)
-├── design-shotgun/  # /design-shotgun skill (visual design exploration)
-├── open-gstack-browser/  # /open-gstack-browser skill (launch GStack Browser)
-├── connect-chrome/  # symlink → open-gstack-browser (backwards compat)
-├── design/          # Design binary CLI (GPT Image API)
-│   ├── src/         # CLI + commands (generate, variants, compare, serve, etc.)
-│   ├── test/        # Integration tests
-│   └── dist/        # Compiled binary
+│   ├── skill-llm-eval.test.ts    # Tier 3: LLM-as-judge (~$0.15/run)
+│   ├── skill-e2e-*.test.ts       # Tier 2: E2E via claude -p (~$3.85/run, split by category)
+│   ├── codex-e2e.test.ts         # Codex multi-AI E2E tests (periodic)
+│   └── gemini-e2e.test.ts        # Gemini E2E tests (periodic)
+├── lib/             # Shared libraries
+│   ├── worktree.ts            # Git worktree helpers
+│   ├── gbrain-sources.ts      # GBrain source management
+│   └── gstack-memory-helpers.ts  # Memory pipeline helpers
+├── model-overlays/  # Per-model behavior override configs (Markdown)
+│   ├── claude.md, opus-4-7.md  # Claude / Opus 4.7 overlays
+│   └── gpt.md, gpt-5.4.md, gemini.md, o-series.md  # Other model overlays
+├── agents/          # Agent config files
+│   └── openai.yaml  # OpenAI agent config (Agents API)
+├── supabase/        # Supabase integration
+│   ├── functions/   # Edge functions
+│   └── migrations/  # Database migrations
+├── browser-skills/  # Standalone browser automation scripts
+│   └── hackernews-frontpage/  # Example: HN frontpage scraper
+├── openclaw/        # OpenClaw native skills (published to ClawHub)
+│   └── skills/      # gstack-openclaw-{office-hours,ceo-review,investigate,retro}/
 ├── extension/       # Chrome extension (side panel + activity feed + CSS inspector)
-├── lib/             # Shared libraries (worktree.ts)
 ├── docs/designs/    # Design documents
-├── setup-deploy/    # /setup-deploy skill (one-time deploy config)
-├── .github/         # CI workflows + Docker image
-│   ├── workflows/   # evals.yml (E2E on Ubicloud), skill-docs.yml, actionlint.yml
-│   └── docker/      # Dockerfile.ci (pre-baked toolchain + Playwright/Chromium)
+│   └── *.md         # ARCHITECTURE notes, SIDEBAR_MESSAGE_FLOW, PLAN_TUNING, etc.
+├── gstack-upgrade/  # /gstack-upgrade skill + migration scripts
+│   └── migrations/  # Version migration shell scripts (v0.15→v1.27+)
+├── bin/             # CLI utilities
+│   ├── gstack-config, gstack-slug, gstack-repo-mode  # Config + project helpers
+│   ├── gstack-next-version     # Monotonic version bumper
+│   ├── gstack-update-check     # SHA-pinned remote VERSION check
+│   ├── gstack-brain-*          # GBrain pipeline (sync, ingest, reader, etc.)
+│   ├── gstack-telemetry-*      # Telemetry log + sync
+│   ├── gstack-timeline-*       # Session timeline log + reader
+│   ├── gstack-learnings-*      # Learnings log + search
+│   ├── gstack-memory-ingest.ts # Memory ingestion pipeline
+│   └── chrome-cdp, gstack-global-discover, gstack-paths, …
+│
+│ ── Skills (one directory per slash command) ──────────────────────────
+├── autoplan/        # /autoplan   — full review pipeline: CEO → design → eng
+├── benchmark/       # /benchmark  — performance regression detection
+├── benchmark-models/ # /benchmark-models — model comparison benchmarking
+├── canary/          # /canary     — post-deploy monitoring loop
+├── careful/         # /careful    — careful mode (plan-before-act guardrail)
+├── codex/           # /codex      — multi-AI second opinion via OpenAI Codex CLI
+├── context-restore/ # /context-restore — resume saved session context
+├── context-save/    # /context-save    — save session context to disk
+├── cso/             # /cso        — OWASP Top 10 + STRIDE security audit
+├── design-consultation/ # /design-consultation — design system from scratch
+├── design-html/     # /design-html    — HTML/CSS design generation
+├── design-review/   # /design-review  — design audit + fix loop
+├── design-shotgun/  # /design-shotgun — visual design exploration
+├── devex-review/    # /devex-review   — developer experience audit (report-only)
+├── document-release/ # /document-release — post-ship doc updates
+├── freeze/          # /freeze     — freeze a snapshot of current state
+├── guard/           # /guard      — pre-action guardrail check
+├── health/          # /health     — project health check
+├── investigate/     # /investigate — systematic root-cause debugging
+├── land-and-deploy/ # /land-and-deploy — merge → deploy → canary verify
+├── landing-report/  # /landing-report  — post-landing summary report
+├── learn/           # /learn      — surface and review operational learnings
+├── office-hours/    # /office-hours — YC Office Hours startup diagnostic
+├── open-gstack-browser/ # /open-gstack-browser — launch GStack Browser
+├── connect-chrome/  # symlink → open-gstack-browser (backwards compat)
+├── pair-agent/      # /pair-agent — remote browser pairing via ngrok tunnel
+├── plan-ceo-review/ # /plan-ceo-review — CEO-lens strategic plan review
+├── plan-design-review/ # /plan-design-review — design audit (report-only)
+├── plan-devex-review/  # /plan-devex-review — DevEx plan review (report-only)
+├── plan-eng-review/ # /plan-eng-review  — engineering plan review
+├── plan-tune/       # /plan-tune  — tune plan review question weights
+├── qa/              # /qa         — QA testing with browser + fix loop
+├── qa-only/         # /qa-only    — QA testing, report-only (no fixes)
+├── retro/           # /retro      — retrospective (includes global cross-project mode)
+├── review/          # /review     — PR code review
+├── scrape/          # /scrape     — web scraping workflow
+├── setup-browser-cookies/ # /setup-browser-cookies — import browser cookies
+├── setup-deploy/    # /setup-deploy — one-time deploy configuration
+├── setup-gbrain/    # /setup-gbrain — GBrain setup and source registration
+├── ship/            # /ship       — full ship workflow (review → version → PR)
+├── skillify/        # /skillify   — convert a workflow into a reusable skill
+├── sync-gbrain/     # /sync-gbrain — sync codebase + memory into GBrain
+├── unfreeze/        # /unfreeze   — restore a frozen state snapshot
+│
 ├── contrib/         # Contributor-only tools (never installed for users)
 │   └── add-host/    # /gstack-contrib-add-host skill
+├── .github/         # CI workflows + Docker image
+│   ├── workflows/   # evals.yml, skill-docs.yml, version-gate.yml, actionlint.yml, etc.
+│   └── docker/      # Dockerfile.ci (pre-baked toolchain + Playwright/Chromium)
 ├── setup            # One-time setup: build binary + symlink skills
 ├── SKILL.md         # Generated from SKILL.md.tmpl (don't edit directly)
 ├── SKILL.md.tmpl    # Template: edit this, run gen:skill-docs
+├── ARCHITECTURE.md  # Daemon model, security model, dual-listener design
 ├── ETHOS.md         # Builder philosophy (Boil the Lake, Search Before Building)
-└── package.json     # Build scripts for browse
+├── BROWSER.md       # Browser skill development guide
+└── package.json     # Build scripts + dependencies
 ```
 
 ## SKILL.md workflow
@@ -158,6 +249,16 @@ SKILL.md files are **generated** from `.tmpl` templates. To update docs:
 
 To add a new browse command: add it to `browse/src/commands.ts` and rebuild.
 To add a snapshot flag: add it to `SNAPSHOT_FLAGS` in `browse/src/snapshot.ts` and rebuild.
+
+**Preamble tiers.** Every skill declares a `preambleTier` (1–4) in its template
+context. Higher tiers include more behavioral scaffolding:
+- T1: core bootstrap + upgrade check + voice (trimmed). For lightweight skills (browse, benchmark).
+- T2: T1 + full voice + AskUserQuestion format + completeness + context-recovery + confusion protocol. For investigative skills (investigate, cso, retro).
+- T3: T2 + repo-mode + search-before-building. For review + planning skills (autoplan, office-hours, plan-*).
+- T4: T3 + test-failure triage placeholder. For ship/QA/full-workflow skills (ship, review, qa, design-review).
+
+The composition lives in `scripts/resolvers/preamble.ts`; each section is a
+separate file in `scripts/resolvers/preamble/`.
 
 **Token ceiling:** Generated SKILL.md files trip a warning above 160KB (~40K tokens).
 This is a "watch for feature bloat" guardrail, not a hard gate. Modern flagship
@@ -204,6 +305,15 @@ Rules:
   If a block needs context from a previous step, restate it in the prose above.
 - **Express conditionals as English.** Instead of nested `if/elif/else` in bash,
   write numbered decision steps: "1. If X, do Y. 2. Otherwise, do Z."
+
+## Model overlays
+
+`model-overlays/` contains per-model behavior override Markdown files. Each file
+(`claude.md`, `opus-4-7.md`, `gpt.md`, `gpt-5.4.md`, `gemini.md`, `o-series.md`)
+is injected into skill prompts when a model overlay is active. Overlays let the
+same skill template behave correctly across different model families without
+hardcoding model-specific instructions in the templates themselves. The overlay
+resolver is in `scripts/resolvers/model-overlay.ts`.
 
 ## Writing style (V1)
 
@@ -348,14 +458,14 @@ migration script to `gstack-upgrade/migrations/`. Read CONTRIBUTING.md's "Upgrad
 migrations" section for the format and testing requirements. The upgrade skill runs
 these automatically after `./setup` during `/gstack-upgrade`.
 
-## Compiled binaries — NEVER commit browse/dist/ or design/dist/
+## Compiled binaries — NEVER commit browse/dist/, design/dist/, or make-pdf/dist/
 
-The `browse/dist/` and `design/dist/` directories contain compiled Bun binaries
-(`browse`, `find-browse`, `design`, ~58MB each). These are Mach-O arm64 only — they
-do NOT work on Linux, Windows, or Intel Macs. The `./setup` script already builds
-from source for every platform, so the checked-in binaries are redundant. They are
-tracked by git due to a historical mistake and should eventually be removed with
-`git rm --cached`.
+The `browse/dist/`, `design/dist/`, and `make-pdf/dist/` directories contain compiled
+Bun binaries (`browse`, `find-browse`, `design`, `pdf`, ~58MB each). These are
+Mach-O arm64 only — they do NOT work on Linux, Windows, or Intel Macs. The `./setup`
+script already builds from source for every platform, so the checked-in binaries are
+redundant. They are tracked by git due to a historical mistake and should eventually
+be removed with `git rm --cached`.
 
 **NEVER stage or commit these files.** They show up as modified in `git status`
 because they're tracked despite `.gitignore` — ignore them. When staging files,
@@ -769,15 +879,29 @@ Key routing rules:
 - Product ideas/brainstorming → invoke /office-hours
 - Strategy/scope → invoke /plan-ceo-review
 - Architecture → invoke /plan-eng-review
+- Developer experience audit → invoke /devex-review or /plan-devex-review
 - Design system/plan review → invoke /design-consultation or /plan-design-review
+- Visual design polish → invoke /design-review or /design-shotgun
 - Full review pipeline → invoke /autoplan
-- Bugs/errors → invoke /investigate
+- Bugs/errors/root cause → invoke /investigate
+- Security audit → invoke /cso
 - QA/testing site behavior → invoke /qa or /qa-only
 - Code review/diff check → invoke /review
-- Visual polish → invoke /design-review
 - Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Post-deploy monitoring → invoke /canary
+- Performance regression → invoke /benchmark
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore
+- Surface learnings from past sessions → invoke /learn
+- Sync codebase into GBrain → invoke /sync-gbrain
+- Set up GBrain for first time → invoke /setup-gbrain
+- Remote browser pairing → invoke /pair-agent
+- Freeze/snapshot state → invoke /freeze (restore with /unfreeze)
+- Convert workflow to skill → invoke /skillify
+- Web scraping → invoke /scrape
+- Tune plan review weights → invoke /plan-tune
+- Post-ship doc updates → invoke /document-release
+- Retrospective → invoke /retro
 
 ## GBrain Search Guidance (configured by /sync-gbrain)
 <!-- gstack-gbrain-search-guidance:start -->
