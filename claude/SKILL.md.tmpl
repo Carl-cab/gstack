@@ -1,17 +1,19 @@
 ---
 name: claude
 preamble-tier: 3
-version: 1.0.0
+version: 1.1.0
 description: |
-  Claude Code CLI wrapper for non-Claude hosts - three modes. Review: independent
+  Claude Code CLI wrapper for non-Claude hosts - four modes. Review: independent
   diff review via claude -p. Challenge: adversarial failure-mode review. Consult:
-  ask Claude about the repo with read-only file tools. Use when asked for "claude
-  review", "claude challenge", "ask claude", "second opinion from claude", or
-  "outside voice". (gstack)
+  ask Claude about the repo with read-only file tools. Remote Control: start a
+  persistent named Claude session that another process can drive. Use when asked
+  for "claude review", "claude challenge", "ask claude", "second opinion from
+  claude", "outside voice", or "claude remote-control". (gstack)
 triggers:
   - claude review
   - claude challenge
   - ask claude
+  - claude remote-control
 allowed-tools:
   - Bash
   - Read
@@ -26,7 +28,7 @@ allowed-tools:
 
 You are running the `/claude` skill from a non-Claude host. This wraps `claude -p`
 to get an independent Claude Code second opinion without allowing nested Claude to
-modify files.
+modify files. It also supports `--remote-control` for persistent interactive sessions.
 
 The generated external invocation name is `gstack-claude`.
 
@@ -81,7 +83,8 @@ Parse the user's input:
 
 1. `/claude review` or `/claude review <instructions>` - **Review mode** (Step 2A)
 2. `/claude challenge` or `/claude challenge <focus>` - **Challenge mode** (Step 2B)
-3. `/claude` with no arguments, or `/claude <anything else>` - **Consult mode** (Step 2C)
+3. `/claude remote-control` or `/claude rc` - **Remote Control mode** (Step 2D)
+4. `/claude` with no arguments, or `/claude <anything else>` - **Consult mode** (Step 2C)
 
 If no mode is obvious and a diff exists, ask whether to review, challenge, or consult.
 
@@ -321,6 +324,66 @@ rm -f "$PROMPT_FILE" "$RESP_FILE" "$ERR_FILE"
 
 ---
 
+## Step 2D: Remote Control Mode
+
+Start a persistent, named Claude interactive session with Remote Control enabled.
+This lets another agent or process drive Claude without spawning new one-shot runs.
+
+1. Generate a session name:
+
+```bash
+RC_NAME="gstack-rc-$(date +%s)"
+echo "SESSION_NAME: $RC_NAME"
+```
+
+2. Check for tmux:
+
+```bash
+command -v tmux >/dev/null 2>&1 && echo "TMUX_AVAILABLE" || echo "TMUX_MISSING"
+```
+
+3a. If tmux is available, launch Claude in a new tmux window:
+
+```bash
+tmux new-window -n "$RC_NAME" "claude --remote-control \"$RC_NAME\""
+echo "LAUNCHED_IN_TMUX: $RC_NAME"
+```
+
+3b. If tmux is not available, launch Claude in the background via a named pipe:
+
+```bash
+RC_PIPE="/tmp/gstack-rc-${RC_NAME}.pipe"
+mkfifo "$RC_PIPE" 2>/dev/null || true
+nohup claude --remote-control "$RC_NAME" < "$RC_PIPE" > "/tmp/gstack-rc-${RC_NAME}.log" 2>&1 &
+RC_PID=$!
+echo "LAUNCHED_BACKGROUND: pid=$RC_PID pipe=$RC_PIPE log=/tmp/gstack-rc-${RC_NAME}.log"
+```
+
+4. Save the session info for later reference:
+
+```bash
+mkdir -p .context
+printf '{"name":"%s","started":"%s"}\n' "$RC_NAME" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  > .context/claude-rc-session.json
+echo "SESSION_SAVED"
+```
+
+5. Print connection instructions to the user:
+
+```
+Claude Remote Control session started.
+============================================================
+Session name : <RC_NAME>
+Attach (tmux): tmux attach -t <RC_NAME>    (if launched in tmux)
+Send a prompt: echo "your prompt here" | claude -p --resume <RC_NAME>
+Stop session : tmux kill-window -t <RC_NAME>  (tmux) or kill <RC_PID> (background)
+============================================================
+The session is running Claude with --remote-control. Any other process can
+now connect to it by name using the Claude Code session resume API.
+```
+
+---
+
 ## Error Handling
 
 - **Binary not found:** Stop with install instructions.
@@ -329,13 +392,15 @@ rm -f "$PROMPT_FILE" "$RESP_FILE" "$ERR_FILE"
 - **JSON parse failure:** Show raw stdout from `$RESP_FILE` and stderr from `$ERR_FILE`.
 - **Empty response:** Tell the user "Claude returned no response. Check stderr for errors."
 - **Resume failure:** Delete `.context/claude-session-id` and retry with a fresh session.
+- **Remote Control tmux failure:** Fall back to background launch and show the pipe/log paths.
 
 ---
 
 ## Important Rules
 
 - Nested Claude is read-only in consult mode and tool-less in review/challenge.
-- Always include `--disable-slash-commands`.
-- Never pass nested Claude `Bash`, `Edit`, or `Write`.
+- Always include `--disable-slash-commands` for `-p` modes (review/challenge/consult).
+- Remote Control mode starts an INTERACTIVE session — do NOT add `-p` or `--tools ""`.
+- Never pass nested Claude `Bash`, `Edit`, or `Write` in consult mode.
 - Never interpolate user text into a shell command.
 - Present Claude's response faithfully, then add any host-agent synthesis after it.
