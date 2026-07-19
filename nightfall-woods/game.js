@@ -554,21 +554,48 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-renderer.domElement.addEventListener('mousemove', (e) => {
-  if (document.pointerLockElement !== renderer.domElement) return;
-  G.yaw -= e.movementX * 0.0024;
-  G.pitch -= e.movementY * 0.0022;
+// Look controls work two ways so the game is playable even where the browser
+// blocks Pointer Lock (e.g. inside an embedded iframe / hosted preview):
+//  - Locked mode: mouse moves the view freely (desktop, full page).
+//  - Fallback mode: click-drag to look; a click that barely moves = "use item".
+let lockActive = false;   // pointer lock currently held
+let dragging = false, dragMoved = 0;
+
+function applyLook(dx, dy) {
+  G.yaw -= dx * 0.0024;
+  G.pitch -= dy * 0.0022;
   G.pitch = Math.max(-0.55, Math.min(0.85, G.pitch));
+}
+renderer.domElement.addEventListener('mousemove', (e) => {
+  if (!G.running) return;
+  if (lockActive) applyLook(e.movementX, e.movementY);
+  else if (dragging) { applyLook(e.movementX, e.movementY); dragMoved += Math.abs(e.movementX) + Math.abs(e.movementY); }
 });
 renderer.domElement.addEventListener('mousedown', (e) => {
-  if (!G.running) return;
-  if (e.button === 0) useItem();
+  if (!G.running || e.button !== 0) return;
+  if (lockActive) { useItem(); }
+  else { dragging = true; dragMoved = 0; }        // start drag-look
+});
+window.addEventListener('mouseup', (e) => {
+  if (e.button !== 0 || !dragging) return;
+  dragging = false;
+  if (G.running && dragMoved < 6) useItem();       // treated as a click, not a look-drag
 });
 document.addEventListener('pointerlockchange', () => {
-  if (document.pointerLockElement !== renderer.domElement && G.running && !G.over) {
-    pauseGame();
-  }
+  const nowLocked = document.pointerLockElement === renderer.domElement;
+  // Only auto-pause when we actually HAD the lock and lost it mid-game
+  // (browser Esc). Never pause just because lock was never granted.
+  if (lockActive && !nowLocked && G.running && !G.over && !G.crafting) pauseGame();
+  lockActive = nowLocked;
 });
+// If the environment refuses pointer lock, hint the fallback once.
+document.addEventListener('pointerlockerror', () => {
+  toast('Drag the mouse to look around', 2.5);
+});
+function tryPointerLock() {
+  const el = renderer.domElement;
+  if (el.requestPointerLock) { try { el.requestPointerLock(); } catch (_) { /* fallback drag mode */ } }
+}
 
 function toggleFlashlight() {
   G.flashlightOn = !G.flashlightOn;
@@ -997,7 +1024,7 @@ function toggleCrafting() {
   if (G.crafting) {
     G.crafting = false;
     dom.craft.classList.add('hidden');
-    if (!G.over) { G.running = true; renderer.domElement.requestPointerLock(); }
+    if (!G.over) { G.running = true; tryPointerLock(); }
   } else {
     if (G.over) return;
     G.crafting = true;
@@ -1117,7 +1144,7 @@ function startGame() {
   // optional multiplayer
   if (document.getElementById('mpEnable').checked && !Net.connected) connectMultiplayer();
   updatePeerCount();
-  renderer.domElement.requestPointerLock();
+  tryPointerLock();
 }
 function pauseGame() {
   if (!G.running || G.over) return;
@@ -1131,7 +1158,7 @@ function resumeGame() {
   G.running = true;
   SFX.resume();
   dom.pause.classList.add('hidden');
-  renderer.domElement.requestPointerLock();
+  tryPointerLock();
 }
 
 document.getElementById('playBtn').addEventListener('click', startGame);
