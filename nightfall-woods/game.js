@@ -484,6 +484,7 @@ const dom = {
   endText: document.getElementById('endText'),
   endStats: document.getElementById('endStats'),
   peers: document.getElementById('peers'),
+  controlsCard: document.getElementById('controlsCard'),
   craft: document.getElementById('craft'),
   craftWood: document.getElementById('craftWood'),
   recipes: document.getElementById('recipes'),
@@ -542,6 +543,7 @@ const keys = {};
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (e.code === 'KeyM') { toggleMute(); return; }
+  if (e.code === 'KeyH' && (G.running || G.crafting)) { toggleControlsCard(); return; }
   if (e.code === 'KeyC' && (G.running || G.crafting) && !G.over) { toggleCrafting(); return; }
   if (!G.running) return;
   if (e.code >= 'Digit1' && e.code <= 'Digit6') {
@@ -606,6 +608,21 @@ function toggleFlashlight() {
 function toggleMute() {
   SFX.setMuted(!SFX.isMuted());
   if (dom.muteBtn) dom.muteBtn.textContent = SFX.isMuted() ? '🔇' : '🔊';
+}
+
+// In-game controls card: shown on spawn, auto-fades, toggled with H.
+let controlsCardTimer = 0;
+function showControlsCard(autoHideSecs) {
+  dom.controlsCard.classList.remove('hidden');
+  controlsCardTimer = autoHideSecs || 0;   // 0 = stay until toggled
+}
+function hideControlsCard() {
+  dom.controlsCard.classList.add('hidden');
+  controlsCardTimer = 0;
+}
+function toggleControlsCard() {
+  if (dom.controlsCard.classList.contains('hidden')) showControlsCard(0);
+  else hideControlsCard();
 }
 
 // ---------------------------------------------------------------------------
@@ -1144,6 +1161,7 @@ function startGame() {
   // optional multiplayer
   if (document.getElementById('mpEnable').checked && !Net.connected) connectMultiplayer();
   updatePeerCount();
+  showControlsCard(10);              // greet with the controls, fade after 10s
   tryPointerLock();
 }
 function pauseGame() {
@@ -1191,6 +1209,8 @@ function animate() {
 
     // toast timeout
     if (toastTimer > 0) { toastTimer -= dt; if (toastTimer <= 0) dom.toast.classList.remove('show'); }
+    // controls card auto-fade
+    if (controlsCardTimer > 0) { controlsCardTimer -= dt; if (controlsCardTimer <= 0) hideControlsCard(); }
     // hurt vignette
     if (hurtFlash > 0) hurtFlash -= dt;
     dom.vignette.style.boxShadow = `inset 0 0 220px 40px rgba(150,0,0,${Math.max(0, hurtFlash) * 0.9})`;

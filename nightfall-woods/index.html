@@ -146,6 +146,22 @@
   .mphint code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 3px; }
   .nametag { position: absolute; transform: translate(-50%, -100%); font-size: 12px; color: #cfe6ff;
     text-shadow: 0 1px 3px #000; pointer-events: none; white-space: nowrap; }
+
+  /* In-game controls card */
+  #controlsCard {
+    position: absolute; top: 50%; left: 22px; transform: translateY(-50%);
+    background: var(--panel); border: 1px solid rgba(255,255,255,0.16); border-radius: 10px;
+    padding: 14px 16px; backdrop-filter: blur(3px); pointer-events: none;
+    transition: opacity 0.5s; opacity: 1; min-width: 220px;
+  }
+  #controlsCard.hidden { opacity: 0; }
+  #controlsCard .cc-title { font-size: 13px; letter-spacing: 2px; opacity: 0.9; margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.14); padding-bottom: 6px; }
+  #controlsCard .cc-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; }
+  #controlsCard .cc-k { color: #f4d58d; font-weight: 700; white-space: nowrap; }
+  #controlsCard .cc-grid span:nth-child(even) { opacity: 0.85; }
+  #controlsCard .cc-foot { margin-top: 10px; font-size: 11px; opacity: 0.5; }
+  #controlsCard .cc-foot b { color: #f4d58d; }
 </style>
 </head>
 <body>
@@ -177,7 +193,26 @@
   <div id="interact"></div>
   <div id="vignette"></div>
   <div id="peers"></div>
-  <div id="hint">Press <span class="kbd">C</span> to craft · <span class="kbd">M</span> mute</div>
+  <div id="hint">Press <span class="kbd">H</span> for controls · <span class="kbd">C</span> craft · <span class="kbd">M</span> mute</div>
+
+  <!-- In-game controls card: shows on spawn, auto-fades, toggle with H -->
+  <div id="controlsCard">
+    <div class="cc-title">HOW TO PLAY</div>
+    <div class="cc-grid">
+      <span class="cc-k">W A S D</span><span>Move</span>
+      <span class="cc-k">Drag mouse</span><span>Look around</span>
+      <span class="cc-k">Shift</span><span>Sprint</span>
+      <span class="cc-k">Space</span><span>Jump</span>
+      <span class="cc-k">Left-click</span><span>Use item</span>
+      <span class="cc-k">1 – 6</span><span>Select item</span>
+      <span class="cc-k">F</span><span>Flashlight</span>
+      <span class="cc-k">E</span><span>Interact</span>
+      <span class="cc-k">C</span><span>Crafting</span>
+      <span class="cc-k">M</span><span>Mute</span>
+      <span class="cc-k">Esc</span><span>Pause</span>
+    </div>
+    <div class="cc-foot">Press <b>H</b> to hide / show</div>
+  </div>
 </div>
 
 <!-- Sound toggle (always available) -->
