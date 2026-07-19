@@ -6,7 +6,8 @@ forest and have to reach dawn without your health, hunger, or thirst hitting zer
 while something with antlers moves between the trees.
 
 Built with plain [Three.js](https://threejs.org) (vendored locally, so it works
-fully offline).
+fully offline). Now with **procedural sound, crafting, an endless difficulty ramp
+across nights, and optional multiplayer**.
 
 ![Nightfall Woods](docs/screenshot.png)
 
@@ -45,6 +46,8 @@ vendored as a classic script (`vendor/three.min.js`), so it loads straight from
 | **Left-click** | Use selected item |
 | **F** | Toggle flashlight |
 | **E** | Interact (pick up berries/water, board the boat) |
+| **C** | Open/close crafting |
+| **M** | Mute/unmute sound |
 | **Esc** | Pause |
 
 ### The loop
@@ -60,8 +63,63 @@ vendored as a classic script (`vendor/three.min.js`), so it loads straight from
 - **The creature hunts in the dark.** It stalks the treeline and charges when it
   spots you away from the fire. Fend it off with the **knife** (slot 3) or wave a
   **torch** (slot 5) to stagger it. The campfire's light keeps it back.
-- **Two ways to win:** outlast the night until dawn, *or* gather 5 wood and press
-  **E** at the boat on the lake to lever it free and escape.
+- **Two ways to win:** escape by boat (gather 5 wood, press **E** at the boat), or
+  keep surviving night after night for as long as you can.
+
+### Surviving forever: the night ramp
+
+Reaching 6:00 AM no longer ends the run. Dawn breaks, you get a small hunger/thirst
+top-up, and **Night 100, 101, 102...** begin, each harder than the last:
+
+- More creatures join the hunt (up to a full pack).
+- They move faster, spot you from further away, and hit harder.
+- Hunger and thirst drain quicker.
+
+Your health carries over between nights, so every night is a fresh gamble on how
+long to push before you make a run for the boat. Escaping by boat is the only clean
+"win"; otherwise it's a high-score chase for the highest night you can reach.
+
+### Crafting
+
+Press **C** (or click the CRAFTING icon) to spend wood on supplies:
+
+| Recipe | Cost | Effect |
+|--------|------|--------|
+| ➕ Bandage | 2 🪵 | +1 First Aid charge |
+| 🕯️ Torch | 2 🪵 | +1 torch to stagger the creatures |
+| 🔥 Fire Fuel | 1 🪵 | Refuel the campfire (+25) from anywhere |
+| 🔱 Spear | 4 🪵 | Permanent: your knife hits harder with more reach |
+
+### Sound
+
+All audio is **synthesized at runtime with the Web Audio API** — there are no sound
+files to download, and it works offline. You get a crackling campfire that grows as
+you approach, footsteps, chopping, a low threat drone that swells when a creature
+charges, a stinger the moment the chase begins, and win/lose stings. Toggle it with
+**M** or the speaker button (top-right).
+
+### Multiplayer (optional)
+
+Play the same woods with friends. It's entirely opt-in — the game is fully
+single-player if you skip it.
+
+1. Start the relay server:
+   ```bash
+   cd nightfall-woods/server
+   npm install
+   npm start            # listens on ws://localhost:8080
+   ```
+2. On the start screen, tick **Play multiplayer**, enter your name, and point it at
+   the server (`ws://localhost:8080` for the same machine, or your host's LAN/public
+   address for remote play).
+3. Everyone connected sees each other as named avatars moving through the forest.
+
+![Multiplayer](docs/multiplayer.png)
+
+The server is a tiny relay (`server/server.js`, ~70 lines): it assigns ids and
+broadcasts position/rotation. The forest and creatures stay client-side, so it's a
+shared-space "see each other" layer, a clean base to grow toward synced enemies and
+shared objectives.
 
 ### Hotbar
 
@@ -78,24 +136,29 @@ vendored as a classic script (`vendor/three.min.js`), so it loads straight from
 
 ```
 nightfall-woods/
-├── index.html          # HUD, menus, and page shell
-├── game.js             # All game logic (world, player, creature, systems)
+├── index.html          # HUD, menus, crafting/multiplayer UI, page shell
+├── game.js             # All game logic (world, player, creatures, systems)
+├── audio.js            # Procedural Web Audio sound (window.SFX)
+├── net.js              # Multiplayer client (window.Net)
+├── server/
+│   ├── server.js       # WebSocket relay server
+│   └── package.json    # Server deps (ws)
 ├── vendor/
 │   └── three.min.js    # Three.js r128 (vendored for offline play)
 └── README.md
 ```
 
-Everything is vanilla JS in `game.js` — world generation, the blocky avatar, the
-creature AI, day/night cycle, survival stats, and the win/lose flow are all in one
-readable file, easy to fork and extend.
+`game.js` is vanilla JS — world generation, the blocky avatar, creature AI,
+day/night cycle, survival stats, crafting, the night ramp, and win/lose flow, all in
+one readable file. Sound (`audio.js`) and networking (`net.js`) are decoupled modules
+exposed as `window.SFX` / `window.Net`.
 
 ## Ideas to extend
 
-- More creatures and a difficulty ramp across nights.
-- A crafting menu behind the CRAFTING icon (bandages, torches from wood).
-- Real multiplayer with a small WebSocket server (this is where a "Roblox-like"
-  version would grow next).
-- Sound: a crackling fire loop, footsteps, and a stinger when the creature charges.
+- Server-authoritative creatures so the whole pack is shared in multiplayer.
+- Shared objectives and reviving downed teammates.
+- A visible map behind the MAP icon.
+- Weather and seasonal variation across nights.
 
 ## Credits
 
